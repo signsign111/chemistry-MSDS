@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>화학물질 안전정보 시스템</title>
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+        }
+        .btn {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+        }
+        #webcam-container {
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+        #webcam {
+            width: 100%;
+            border-radius: 8px;
+        }
+        .hidden {
+            display: none;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>화학물질 안전정보 시스템</h1>
+        
+        <div class="section">
+            <h2>1. 카메라 인식</h2>
+            <button id="startCameraBtn" class="btn">카메라 시작</button>
+            <div id="webcam-container" class="hidden">
+                <video id="webcam" autoplay playsinline></video>
+                <button id="captureBtn" class="btn">캡처</button>
+                <button id="stopCameraBtn" class="btn">카메라 중지</button>
+            </div>
+            <div id="cameraStatus" class="status"></div>
+        </div>
+        
+        <div class="section">
+            <h2>2. 화학물질 인식 결과</h2>
+            <div id="recognitionResult"></div>
+            <div class="loader hidden" id="recognitionLoader"></div>
+        </div>
+        
+        <div class="section">
+            <h2>3. MSDS 정보</h2>
+            <input type="text" id="searchInput" placeholder="화학물질 이름 또는 CAS 번호 입력">
+            <button id="searchBtn" class="btn">검색</button>
+            <div id="msdsResult"></div>
+            <div class="loader hidden" id="msdsLoader"></div>
+        </div>
+        
+        <div class="section">
+            <h2>4. 음성 안내</h2>
+            <button id="speakBtn" class="btn" disabled>안전 정보 읽기</button>
+            <button id="stopSpeakBtn" class="btn" disabled>음성 중지</button>
+        </div>
+    </div>
+    
+    <!-- TensorFlow.js 및 Teachable Machine 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    
+    <script>
+        // API 키 설정
+        const apiKey = "M89wjFezO7WQQOO7qqX384CQlwmLrRq9ov0qr9HvJPdop7B623nHhb7eXTF/K7G1qGoKx050cHG/FhVvTcbD8g==";
+        const apiEndpoint = "https://msds.kosha.or.kr/openapi/service/msdschemv/";
+        
+        // Teachable Machine 모델 URL (사용자 입력 필요)
+        const modelURL = "YOUR_TEACHABLE_MACHINE_MODEL_URL";
+        let model;
+        let webcam;
+        let recognizedChemical = "";
+        let msdsInfo = {};
+        
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            // 카메라 버튼 이벤트
+            document.getElementById('startCameraBtn').addEventListener('click', startCamera);
+            document.getElementById('stopCameraBtn').addEventListener('click', stopCamera);
+            document.getElementById('captureBtn').addEventListener('click', captureImage);
+            
+            // MSDS 검색 버튼 이벤트
+            document.getElementById('searchBtn').addEventListener('click', function() {
+                searchMSDS();
+            });
+            
+            // 음성 안내 버튼 이벤트
+            document.getElementById('speakBtn').addEventListener('click', speakMSDS);
+            document.getElementById('stopSpeakBtn').addEventListener('click', stopSpeaking);
+            
+            // Teachable Machine 모델 초기화
+            initTeachableMachine();
+        });
+
+        // Teachable Machine 모델 초기화
+        async function initTeachableMachine() {
+            try {
+                if (modelURL === "YOUR_TEACHABLE_MACHINE_MODEL_URL") {
+                    console.warn("Teachable Machine 모델 URL을 입력해야 합니다.");
+                    return;
+                }
+                
+                model = await tmImage.load(
+                    modelURL + 'model.json',
+                    modelURL + 'metadata.json'
+                );
+                
+                updateStatus('recognitionResult', '모델 로딩 완료. 화학물질 인식 준비됨.', 'success');
+            } catch (error) {
+                updateStatus('recognitionResult', '모델 로딩 실패: ' + error.message, 'error');
+                console.error('모델 로딩 오류:', error);
+            }
+        }
+
+        // 카메라 시작
+        async function startCamera() {
+            const webcamContainer = document.getElementById('webcam-container');
+            const cameraStatus = document.getElementById('cameraStatus');
+            const video = document.getElementById('webcam');
+            
+            try {
+                webcamContainer.classList.remove('hidden');
+                
+                const constraints = {
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                };
+                
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                
+                cameraStatus.textContent = '카메라가 활성화되었습니다. 화학물질 라벨을 비춰주세요.';
+                cameraStatus.className = 'status success';
+                
+                document.getElementById('startCameraBtn').disabled = true;
+                document.getElementById('captureBtn').disabled = false;
+                document.getElementById('stopCameraBtn').disabled = false;
+                
+                return new Promise((resolve) => {
+                    video.onloadeddata = () => {
+                        resolve(video);
+                    };
+                });
+            } catch (error) {
+                webcamContainer.classList.add('hidden');
+                cameraStatus.textContent = '카메라 접근 실패: ' + error.message;
+                cameraStatus.className = 'status error';
+                console.error('카메라 초기화 오류:', error);
+            }
+        }
+
+        // 카메라 중지
+        function stopCamera() {
+            const video = document.getElementById('webcam');
+            const webcamContainer = document.getElementById('webcam-container');
+            const cameraStatus = document.getElementById('cameraStatus');
+            
+            if (video.srcObject) {
+                const tracks = video.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            
+            webcamContainer.classList.add('hidden');
+            cameraStatus.textContent = '카메라가 중지되었습니다.';
+            cameraStatus.className = 'status';
+            
+            document.getElementById('startCameraBtn').disabled = false;
+            document.getElementById('captureBtn').disabled = true;
+            document.getElementById('stopCameraBtn').disabled = true;
+        }
+
+        // 이미지 캡처 및 분석
+        async function captureImage() {
+            const video = document.getElementById('webcam');
+            const recognitionResult = document.getElementById('recognitionResult');
+            const loader = document.getElementById('recognitionLoader');
+            
+            if (!model) {
+                recognitionResult.textContent = 'Teachable Machine 모델이 로드되지 않았습니다.';
+                recognitionResult.className = 'status error';
+                return;
+            }
+            
+            try {
+                loader.classList.remove('hidden');
+                recognitionResult.textContent = '이미지 분석 중...';
+                
+                const prediction = await model.predict(video);
+                
+                let highestProbability = 0;
+                let recognizedClass = '';
+                
+                prediction.forEach((p) => {
+                    if (p.probability > highestProbability) {
+                        highestProbability = p.probability;
+                        recognizedClass = p.className;
+                    }
+                });
+                
+                if (highestProbability > 0.7) {
+                    recognizedChemical = recognizedClass;
+                    recognitionResult.innerHTML = `
+                        <p>인식된 화학물질: <strong>${recognizedClass}</strong></p>
+                        <p>확률: ${(highestProbability * 100).toFixed(2)}%</p>
+                    `;
+                    recognitionResult.className = 'status success';
+                    searchMSDS(recognizedClass);
+                } else {
+                    recognitionResult.textContent = '화학물질을 정확히 인식하지 못했습니다. 다시 시도해 주세요.';
+                    recognitionResult.className = 'status error';
+                }
+            } catch (error) {
+                recognitionResult.textContent = '이미지 분석 실패: ' + error.message;
+                recognitionResult.className = 'status error';
+                console.error('이미지 분석 오류:', error);
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        // MSDS 정보 검색
+        async function searchMSDS(keyword = null) {
+            const msdsResult = document.getElementById('msdsResult');
+            const loader = document.getElementById('msdsLoader');
+            const searchInput = document.getElementById('searchInput');
+            
+            if (!keyword) {
+                keyword = searchInput.value.trim();
+            }
+            
+            if (!keyword) {
+                msdsResult.textContent = '검색어를 입력해주세요.';
+                msdsResult.className = 'status error';
+                return;
+            }
+            
+            try {
+                loader.classList.remove('hidden');
+                msdsResult.textContent = '정보를 검색 중입니다...';
+                
+                const url = `https://msds.kosha.or.kr/openapi/service/msdschemv/?serviceKey=${encodeURIComponent(apiKey)}&searchWrd=${encodeURIComponent(keyword)}`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP 오류: ${response.status}`);
+                }
+                
+                const xmlText = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+                
+                const errorCode = xmlDoc.querySelector('errorCode');
+                if (errorCode && errorCode.textContent !== '0') {
+                    const errorMsg = xmlDoc.querySelector('errorMsg')?.textContent || '알 수 없는 오류';
+                    throw new Error(`API 오류: ${errorMsg}`);
+                }
+                
+                const items = xmlDoc.querySelectorAll('item');
+                
+                if (items.length === 0) {
+                    msdsResult.textContent = '검색 결과가 없습니다.';
+                    msdsResult.className = 'status';
+                    document.getElementById('speakBtn').disabled = true;
+                    return;
+                }
+                
+                const item = items[0];
+                
+                msdsInfo = {
+                    chemicalName: getXmlElementText(item, 'chemNameKor') || '정보 없음',
+                    casNo: getXmlElementText(item, 'casNo') || '정보 없음',
+                    hazardInfo: getXmlElementText(item, 'hazardInfo') || '정보 없음',
+                    firstAid: getXmlElementText(item, 'firstAid') || '정보 없음',
+                    precaution: getXmlElementText(item, 'precaution') || '정보 없음'
+                };
+                
+                msdsResult.innerHTML = `
+                    <h3>${msdsInfo.chemicalName}</h3>
+                    <p><strong>CAS 번호:</strong> ${msdsInfo.casNo}</p>
+                    <p><strong>위험 정보:</strong> ${msdsInfo.hazardInfo}</p>
+                    <p><strong>응급조치:</strong> ${msdsInfo.firstAid}</p>
+                    <p><strong>취급 시 주의사항:</strong> ${msdsInfo.precaution}</p>
+                `;
+                msdsResult.className = 'status success';
+                
+                document.getElementById('speakBtn').disabled = false;
+                document.getElementById('stopSpeakBtn').disabled = true;
+                
+            } catch (error) {
+                msdsResult.textContent = '정보 검색 실패: ' + error.message;
+                msdsResult.className = 'status error';
+                console.error('MSDS 검색 오류:', error);
+                document.getElementById('speakBtn').disabled = true;
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        // XML 요소 텍스트 가져오기
+        function getXmlElementText(parent, tagName) {
+            const element = parent.querySelector(tagName);
+            return element ? element.textContent : null;
+        }
+
+        // TTS 음성 안내
+        function speakMSDS() {
+            if (!msdsInfo.chemicalName) {
+                alert('MSDS 정보가 없습니다.');
+                return;
+            }
+            
+            const speechText = `
+                화학물질 ${msdsInfo.chemicalName}에 대한 안전 정보입니다.
+                위험 정보: ${msdsInfo.hazardInfo}
+                응급조치: ${msdsInfo.firstAid}
+                취급 시 주의사항: ${msdsInfo.precaution}
+            `;
+            
+            const synth = window.speechSynthesis;
+            const utterance = new SpeechSynthesisUtterance(speechText);
+            
+            utterance.lang = 'ko-KR';
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            
+            const voices = synth.getVoices();
+            const koreanVoice = voices.find(voice => voice.lang === 'ko-KR');
+            if (koreanVoice) {
+                utterance.voice = koreanVoice;
+            }
+            
+            utterance.onstart = function() {
+                document.getElementById('speakBtn').disabled = true;
+                document.getElementById('stopSpeakBtn').disabled = false;
+            };
+            
+            utterance.onend = function() {
+                document.getElementById('speakBtn').disabled = false;
+                document.getElementById('stopSpeakBtn').disabled = true;
+            };
+            
+            utterance.onerror = function(event) {
+                console.error('TTS 오류:', event);
+                document.getElementById('speakBtn').disabled = false;
+                document.getElementById('stopSpeakBtn').disabled = true;
+            };
+            
+            synth.speak(utterance);
+        }
+
+        // TTS 중지
+        function stopSpeaking() {
+            const synth = window.speechSynthesis;
+            synth.cancel();
+            
+            document.getElementById('speakBtn').disabled = false;
+            document.getElementById('stopSpeakBtn').disabled = true;
+        }
+    </script>
+</body>
+</html>
