@@ -86,38 +86,6 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        /* 게이지 스타일 */
-        .gauge-list {
-            margin-top: 10px;
-        }
-        .gauge-row {
-            display: flex;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .gauge-label {
-            width: 120px;
-            font-size: 1em;
-            margin-right: 10px;
-        }
-        .gauge-bar {
-            flex: 1;
-            height: 18px;
-            background: #eee;
-            border-radius: 9px;
-            overflow: hidden;
-            margin-right: 10px;
-        }
-        .gauge-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #4CAF50 60%, #2196F3 100%);
-            transition: width 0.5s;
-        }
-        .gauge-value {
-            width: 50px;
-            text-align: right;
-            font-size: 0.95em;
-        }
     </style>
 </head>
 <body>
@@ -129,8 +97,8 @@
             <button id="startCameraBtn" class="btn">카메라 시작</button>
             <div id="webcam-container" class="hidden">
                 <video id="webcam" autoplay playsinline></video>
-                <button id="captureBtn" class="btn">캡처</button>
-                <button id="stopCameraBtn" class="btn">카메라 중지</button>
+                <button id="captureBtn" class="btn" disabled>캡처</button>
+                <button id="stopCameraBtn" class="btn" disabled>카메라 중지</button>
             </div>
             <div id="cameraStatus" class="status"></div>
         </div>
@@ -138,7 +106,6 @@
         <div class="section">
             <h2>2. 화학물질 인식 결과</h2>
             <div id="recognitionResult"></div>
-            <div id="gaugeContainer" class="gauge-list"></div>
             <div class="loader hidden" id="recognitionLoader"></div>
         </div>
         
@@ -164,17 +131,15 @@
     <script>
         // API 키 설정
         const apiKey = "M89wjFezO7WQQOO7qqX384CQlwmLrRq9ov0qr9HvJPdop7B623nHhb7eXTF/K7G1qGoKx050cHG/FhVvTcbD8g==";
-        // 개발용 CORS 프록시
-        const corsProxy = "https://cors-anywhere.herokuapp.com/";
-        // MSDS API 엔드포인트
         const apiEndpoint = "https://msds.kosha.or.kr/openapi/service/msdschemv/";
+        
         // Teachable Machine 모델 URL
         const modelURL = "https://teachablemachine.withgoogle.com/models/kpJEUyvcV/";
         let model;
         let webcam;
         let recognizedChemical = "";
         let msdsInfo = {};
-
+        
         // 상태 업데이트 함수
         function updateStatus(targetId, message, type) {
             const el = document.getElementById(targetId);
@@ -184,19 +149,25 @@
 
         // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', function() {
+            // 카메라 버튼 이벤트
             document.getElementById('startCameraBtn').addEventListener('click', startCamera);
             document.getElementById('stopCameraBtn').addEventListener('click', stopCamera);
             document.getElementById('captureBtn').addEventListener('click', captureImage);
+            
+            // MSDS 검색 버튼 이벤트
             document.getElementById('searchBtn').addEventListener('click', function() {
                 searchMSDS();
             });
+            
+            // 음성 안내 버튼 이벤트
             document.getElementById('speakBtn').addEventListener('click', speakMSDS);
             document.getElementById('stopSpeakBtn').addEventListener('click', stopSpeaking);
-
+            
+            // Teachable Machine 모델 초기화
             initTeachableMachine();
         });
 
-        // Teachable Machine 모델 초기화
+        // Teachable Machine 모델 초기화 (조건문 제거)
         async function initTeachableMachine() {
             try {
                 model = await tmImage.load(
@@ -215,8 +186,10 @@
             const webcamContainer = document.getElementById('webcam-container');
             const cameraStatus = document.getElementById('cameraStatus');
             const video = document.getElementById('webcam');
+            
             try {
                 webcamContainer.classList.remove('hidden');
+                
                 const constraints = {
                     video: {
                         facingMode: 'environment',
@@ -224,15 +197,20 @@
                         height: { ideal: 480 }
                     }
                 };
+                
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
                 cameraStatus.textContent = '카메라가 활성화되었습니다. 화학물질 라벨을 비춰주세요.';
                 cameraStatus.className = 'status success';
+                
                 document.getElementById('startCameraBtn').disabled = true;
                 document.getElementById('captureBtn').disabled = false;
                 document.getElementById('stopCameraBtn').disabled = false;
+                
                 return new Promise((resolve) => {
-                    video.onloadeddata = () => resolve(video);
+                    video.onloadeddata = () => {
+                        resolve(video);
+                    };
                 });
             } catch (error) {
                 webcamContainer.classList.add('hidden');
@@ -247,36 +225,20 @@
             const video = document.getElementById('webcam');
             const webcamContainer = document.getElementById('webcam-container');
             const cameraStatus = document.getElementById('cameraStatus');
+            
             if (video.srcObject) {
                 const tracks = video.srcObject.getTracks();
                 tracks.forEach(track => track.stop());
                 video.srcObject = null;
             }
+            
             webcamContainer.classList.add('hidden');
             cameraStatus.textContent = '카메라가 중지되었습니다.';
             cameraStatus.className = 'status';
+            
             document.getElementById('startCameraBtn').disabled = false;
             document.getElementById('captureBtn').disabled = true;
             document.getElementById('stopCameraBtn').disabled = true;
-        }
-
-        // 게이지 바 생성 함수
-        function renderGauge(predictions) {
-            const gaugeContainer = document.getElementById('gaugeContainer');
-            gaugeContainer.innerHTML = '';
-            predictions.forEach(pred => {
-                const percent = (pred.probability * 100).toFixed(2);
-                const gaugeRow = document.createElement('div');
-                gaugeRow.className = 'gauge-row';
-                gaugeRow.innerHTML = `
-                    <div class="gauge-label">${pred.className}</div>
-                    <div class="gauge-bar">
-                        <div class="gauge-fill" style="width:${percent}%"></div>
-                    </div>
-                    <div class="gauge-value">${percent}%</div>
-                `;
-                gaugeContainer.appendChild(gaugeRow);
-            });
         }
 
         // 이미지 캡처 및 분석
@@ -284,37 +246,37 @@
             const video = document.getElementById('webcam');
             const recognitionResult = document.getElementById('recognitionResult');
             const loader = document.getElementById('recognitionLoader');
-            const gaugeContainer = document.getElementById('gaugeContainer');
+            
             if (!model) {
                 recognitionResult.textContent = 'Teachable Machine 모델이 로드되지 않았습니다.';
                 recognitionResult.className = 'status error';
-                gaugeContainer.innerHTML = '';
                 return;
             }
+            
             try {
                 loader.classList.remove('hidden');
                 recognitionResult.textContent = '이미지 분석 중...';
-                gaugeContainer.innerHTML = '';
+                
                 const prediction = await model.predict(video);
-
-                // 게이지 표시
-                renderGauge(prediction);
-
-                // 최고 확률 클래스 찾기
-                let highest = prediction[0];
+                
+                let highestProbability = 0;
+                let recognizedClass = '';
+                
                 prediction.forEach((p) => {
-                    if (p.probability > highest.probability) highest = p;
+                    if (p.probability > highestProbability) {
+                        highestProbability = p.probability;
+                        recognizedClass = p.className;
+                    }
                 });
-
-                if (highest.probability > 0.7) {
-                    recognizedChemical = highest.className;
+                
+                if (highestProbability > 0.7) {
+                    recognizedChemical = recognizedClass;
                     recognitionResult.innerHTML = `
-                        <p>인식된 화학물질: <strong>${highest.className}</strong></p>
-                        <p>확률: ${(highest.probability * 100).toFixed(2)}%</p>
+                        <p>인식된 화학물질: <strong>${recognizedClass}</strong></p>
+                        <p>확률: ${(highestProbability * 100).toFixed(2)}%</p>
                     `;
                     recognitionResult.className = 'status success';
-                    // 인식된 결과로 MSDS 정보 자동 검색
-                    searchMSDS(highest.className);
+                    searchMSDS(recognizedClass);
                 } else {
                     recognitionResult.textContent = '화학물질을 정확히 인식하지 못했습니다. 다시 시도해 주세요.';
                     recognitionResult.className = 'status error';
@@ -322,45 +284,52 @@
             } catch (error) {
                 recognitionResult.textContent = '이미지 분석 실패: ' + error.message;
                 recognitionResult.className = 'status error';
-                gaugeContainer.innerHTML = '';
                 console.error('이미지 분석 오류:', error);
             } finally {
                 loader.classList.add('hidden');
             }
         }
 
-        // MSDS 정보 검색 (프록시 적용)
+        // MSDS 정보 검색
         async function searchMSDS(keyword = null) {
             const msdsResult = document.getElementById('msdsResult');
             const loader = document.getElementById('msdsLoader');
             const searchInput = document.getElementById('searchInput');
+            
             if (!keyword) {
                 keyword = searchInput.value.trim();
             }
+            
             if (!keyword) {
                 msdsResult.textContent = '검색어를 입력해주세요.';
                 msdsResult.className = 'status error';
                 return;
             }
+            
             try {
                 loader.classList.remove('hidden');
                 msdsResult.textContent = '정보를 검색 중입니다...';
-                // 프록시를 사용한 API URL
-                const url = corsProxy + apiEndpoint +
-                    `?serviceKey=${encodeURIComponent(apiKey)}&searchWrd=${encodeURIComponent(keyword)}`;
+                
+                const url = `https://msds.kosha.or.kr/openapi/service/msdschemv/?serviceKey=${encodeURIComponent(apiKey)}&searchWrd=${encodeURIComponent(keyword)}`;
+                
                 const response = await fetch(url);
+                
                 if (!response.ok) {
                     throw new Error(`HTTP 오류: ${response.status}`);
                 }
+                
                 const xmlText = await response.text();
                 const parser = new DOMParser();
                 const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+                
                 const errorCode = xmlDoc.querySelector('errorCode');
                 if (errorCode && errorCode.textContent !== '0') {
                     const errorMsg = xmlDoc.querySelector('errorMsg')?.textContent || '알 수 없는 오류';
                     throw new Error(`API 오류: ${errorMsg}`);
                 }
+                
                 const items = xmlDoc.querySelectorAll('item');
+                
                 if (items.length === 0) {
                     msdsResult.textContent = '검색 결과가 없습니다.';
                     msdsResult.className = 'status';
@@ -368,6 +337,7 @@
                     return;
                 }
                 const item = items[0];
+                
                 msdsInfo = {
                     chemicalName: getXmlElementText(item, 'chemNameKor') || '정보 없음',
                     casNo: getXmlElementText(item, 'casNo') || '정보 없음',
@@ -375,6 +345,7 @@
                     firstAid: getXmlElementText(item, 'firstAid') || '정보 없음',
                     precaution: getXmlElementText(item, 'precaution') || '정보 없음'
                 };
+                
                 msdsResult.innerHTML = `
                     <h3>${msdsInfo.chemicalName}</h3>
                     <p><strong>CAS 번호:</strong> ${msdsInfo.casNo}</p>
@@ -385,6 +356,7 @@
                 msdsResult.className = 'status success';
                 document.getElementById('speakBtn').disabled = false;
                 document.getElementById('stopSpeakBtn').disabled = true;
+                
             } catch (error) {
                 msdsResult.textContent = '정보 검색 실패: ' + error.message;
                 msdsResult.className = 'status error';
@@ -407,22 +379,27 @@
                 alert('MSDS 정보가 없습니다.');
                 return;
             }
+            
             const speechText = `
                 화학물질 ${msdsInfo.chemicalName}에 대한 안전 정보입니다.
                 위험 정보: ${msdsInfo.hazardInfo}
                 응급조치: ${msdsInfo.firstAid}
                 취급 시 주의사항: ${msdsInfo.precaution}
             `;
+            
             const synth = window.speechSynthesis;
             const utterance = new SpeechSynthesisUtterance(speechText);
+            
             utterance.lang = 'ko-KR';
             utterance.rate = 1.0;
             utterance.pitch = 1.0;
+            
             const voices = synth.getVoices();
             const koreanVoice = voices.find(voice => voice.lang === 'ko-KR');
             if (koreanVoice) {
                 utterance.voice = koreanVoice;
             }
+            
             utterance.onstart = function() {
                 document.getElementById('speakBtn').disabled = true;
                 document.getElementById('stopSpeakBtn').disabled = false;
@@ -431,6 +408,7 @@
                 document.getElementById('speakBtn').disabled = false;
                 document.getElementById('stopSpeakBtn').disabled = true;
             };
+            
             synth.speak(utterance);
         }
 
