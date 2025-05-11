@@ -164,6 +164,10 @@
     <script>
         // API 키 설정
         const apiKey = "M89wjFezO7WQQOO7qqX384CQlwmLrRq9ov0qr9HvJPdop7B623nHhb7eXTF/K7G1qGoKx050cHG/FhVvTcbD8g==";
+        // 개발용 CORS 프록시
+        const corsProxy = "https://cors-anywhere.herokuapp.com/";
+        // MSDS API 엔드포인트
+        const apiEndpoint = "https://msds.kosha.or.kr/openapi/service/msdschemv/";
         // Teachable Machine 모델 URL
         const modelURL = "https://teachablemachine.withgoogle.com/models/kpJEUyvcV/";
         let model;
@@ -192,7 +196,7 @@
             initTeachableMachine();
         });
 
-        // Teachable Machine 모델 초기화 (조건문 제거)
+        // Teachable Machine 모델 초기화
         async function initTeachableMachine() {
             try {
                 model = await tmImage.load(
@@ -325,7 +329,7 @@
             }
         }
 
-        // MSDS 정보 검색
+        // MSDS 정보 검색 (프록시 적용)
         async function searchMSDS(keyword = null) {
             const msdsResult = document.getElementById('msdsResult');
             const loader = document.getElementById('msdsLoader');
@@ -341,7 +345,9 @@
             try {
                 loader.classList.remove('hidden');
                 msdsResult.textContent = '정보를 검색 중입니다...';
-                const url = `https://msds.kosha.or.kr/openapi/service/msdschemv/?serviceKey=${encodeURIComponent(apiKey)}&searchWrd=${encodeURIComponent(keyword)}`;
+                // 프록시를 사용한 API URL
+                const url = corsProxy + apiEndpoint +
+                    `?serviceKey=${encodeURIComponent(apiKey)}&searchWrd=${encodeURIComponent(keyword)}`;
                 const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`HTTP 오류: ${response.status}`);
