@@ -97,8 +97,8 @@
             <button id="startCameraBtn" class="btn">카메라 시작</button>
             <div id="webcam-container" class="hidden">
                 <video id="webcam" autoplay playsinline></video>
-                <button id="captureBtn" class="btn">캡처</button>
-                <button id="stopCameraBtn" class="btn">카메라 중지</button>
+                <button id="captureBtn" class="btn" disabled>캡처</button>
+                <button id="stopCameraBtn" class="btn" disabled>카메라 중지</button>
             </div>
             <div id="cameraStatus" class="status"></div>
         </div>
@@ -133,13 +133,20 @@
         const apiKey = "M89wjFezO7WQQOO7qqX384CQlwmLrRq9ov0qr9HvJPdop7B623nHhb7eXTF/K7G1qGoKx050cHG/FhVvTcbD8g==";
         const apiEndpoint = "https://msds.kosha.or.kr/openapi/service/msdschemv/";
         
-        // Teachable Machine 모델 URL (사용자 입력 필요)
+        // Teachable Machine 모델 URL
         const modelURL = "https://teachablemachine.withgoogle.com/models/kpJEUyvcV/";
         let model;
         let webcam;
         let recognizedChemical = "";
         let msdsInfo = {};
         
+        // 상태 업데이트 함수
+        function updateStatus(targetId, message, type) {
+            const el = document.getElementById(targetId);
+            el.textContent = message;
+            el.className = 'status ' + (type || '');
+        }
+
         // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', function() {
             // 카메라 버튼 이벤트
@@ -160,19 +167,13 @@
             initTeachableMachine();
         });
 
-        // Teachable Machine 모델 초기화
+        // Teachable Machine 모델 초기화 (조건문 제거)
         async function initTeachableMachine() {
             try {
-                if (modelURL === "https://teachablemachine.withgoogle.com/models/kpJEUyvcV/") {
-                    console.warn("https://teachablemachine.withgoogle.com/models/kpJEUyvcV/");
-                    return;
-                }
-                
                 model = await tmImage.load(
                     modelURL + 'model.json',
                     modelURL + 'metadata.json'
                 );
-                
                 updateStatus('recognitionResult', '모델 로딩 완료. 화학물질 인식 준비됨.', 'success');
             } catch (error) {
                 updateStatus('recognitionResult', '모델 로딩 실패: ' + error.message, 'error');
@@ -199,7 +200,6 @@
                 
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
-                
                 cameraStatus.textContent = '카메라가 활성화되었습니다. 화학물질 라벨을 비춰주세요.';
                 cameraStatus.className = 'status success';
                 
@@ -336,7 +336,6 @@
                     document.getElementById('speakBtn').disabled = true;
                     return;
                 }
-                
                 const item = items[0];
                 
                 msdsInfo = {
@@ -355,7 +354,6 @@
                     <p><strong>취급 시 주의사항:</strong> ${msdsInfo.precaution}</p>
                 `;
                 msdsResult.className = 'status success';
-                
                 document.getElementById('speakBtn').disabled = false;
                 document.getElementById('stopSpeakBtn').disabled = true;
                 
@@ -406,14 +404,7 @@
                 document.getElementById('speakBtn').disabled = true;
                 document.getElementById('stopSpeakBtn').disabled = false;
             };
-            
             utterance.onend = function() {
-                document.getElementById('speakBtn').disabled = false;
-                document.getElementById('stopSpeakBtn').disabled = true;
-            };
-            
-            utterance.onerror = function(event) {
-                console.error('TTS 오류:', event);
                 document.getElementById('speakBtn').disabled = false;
                 document.getElementById('stopSpeakBtn').disabled = true;
             };
@@ -421,11 +412,9 @@
             synth.speak(utterance);
         }
 
-        // TTS 중지
+        // 음성 중지
         function stopSpeaking() {
-            const synth = window.speechSynthesis;
-            synth.cancel();
-            
+            window.speechSynthesis.cancel();
             document.getElementById('speakBtn').disabled = false;
             document.getElementById('stopSpeakBtn').disabled = true;
         }
