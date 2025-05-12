@@ -54,7 +54,7 @@
             background-color: #f8d7da;
             color: #721c24;
         }
-        #result {
+        #msdsResult {
             margin-top: 20px;
             padding: 15px;
             border: 1px solid #e9ecef;
@@ -123,7 +123,7 @@
 <body>
     <div class="container">
         <h1>화학물질 안전정보 시스템</h1>
-        
+
         <div class="section">
             <h2>1. 카메라 인식</h2>
             <button id="startCameraBtn" class="btn">카메라 시작</button>
@@ -134,14 +134,14 @@
             </div>
             <div id="cameraStatus" class="status"></div>
         </div>
-        
+
         <div class="section">
             <h2>2. 화학물질 인식 결과</h2>
             <div id="recognitionResult"></div>
             <div id="gaugeContainer" class="gauge-list"></div>
             <div class="loader hidden" id="recognitionLoader"></div>
         </div>
-        
+
         <div class="section">
             <h2>3. MSDS 정보</h2>
             <input type="text" id="searchInput" placeholder="화학물질 이름 또는 CAS 번호 입력">
@@ -149,21 +149,18 @@
             <div id="msdsResult"></div>
             <div class="loader hidden" id="msdsLoader"></div>
         </div>
-        
+
         <div class="section">
             <h2>4. 음성 안내</h2>
             <button id="speakBtn" class="btn" disabled>안전 정보 읽기</button>
             <button id="stopSpeakBtn" class="btn" disabled>음성 중지</button>
         </div>
     </div>
-    
-    <!-- TensorFlow.js 및 Teachable Machine 라이브러리 -->
+
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-    
+
     <script>
-        // API 키 설정
-        const apiKey = "M89wjFezO7WQQOO7qqX384CQlwmLrRq9ov0qr9HvJPdop7B623nHhb7eXTF/K7G1qGoKx050cHG/FhVvTcbD8g==";
         // Teachable Machine 모델 URL
         const modelURL = "https://teachablemachine.withgoogle.com/models/kpJEUyvcV/";
         let model;
@@ -325,60 +322,55 @@
             }
         }
 
-        // MSDS 정보 검색
+        // MSDS 정보 검색 (Node.js 서버 API 호출)
         async function searchMSDS(keyword = null) {
             const msdsResult = document.getElementById('msdsResult');
             const loader = document.getElementById('msdsLoader');
             const searchInput = document.getElementById('searchInput');
+
             if (!keyword) {
                 keyword = searchInput.value.trim();
             }
+
             if (!keyword) {
                 msdsResult.textContent = '검색어를 입력해주세요.';
                 msdsResult.className = 'status error';
                 return;
             }
+
             try {
                 loader.classList.remove('hidden');
                 msdsResult.textContent = '정보를 검색 중입니다...';
+
                 const url = `http://localhost:3000/msds?keyword=${encodeURIComponent(keyword)}`;
                 const response = await fetch(url);
+
                 if (!response.ok) {
-                    throw new Error(`HTTP 오류: ${response.status}`);
+                    const error = await response.json();
+                    throw new Error(`HTTP 오류: ${response.status} - ${error.error || '알 수 없는 오류'}`);
                 }
-                const xmlText = await response.text();
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
-                const errorCode = xmlDoc.querySelector('errorCode');
-                if (errorCode && errorCode.textContent !== '0') {
-                    const errorMsg = xmlDoc.querySelector('errorMsg')?.textContent || '알 수 없는 오류';
-                    throw new Error(`API 오류: ${errorMsg}`);
-                }
-                const items = xmlDoc.querySelectorAll('item');
-                if (items.length === 0) {
+
+                const msdsInfo = await response.json();
+
+                if (!msdsInfo) {
                     msdsResult.textContent = '검색 결과가 없습니다.';
                     msdsResult.className = 'status';
                     document.getElementById('speakBtn').disabled = true;
                     return;
                 }
-                const item = items[0];
-                msdsInfo = {
-                    chemicalName: getXmlElementText(item, 'chemNameKor') || '정보 없음',
-                    casNo: getXmlElementText(item, 'casNo') || '정보 없음',
-                    hazardInfo: getXmlElementText(item, 'hazardInfo') || '정보 없음',
-                    firstAid: getXmlElementText(item, 'firstAid') || '정보 없음',
-                    precaution: getXmlElementText(item, 'precaution') || '정보 없음'
-                };
+
                 msdsResult.innerHTML = `
-                    <h3>${msdsInfo.chemicalName}</h3>
-                    <p><strong>CAS 번호:</strong> ${msdsInfo.casNo}</p>
-                    <p><strong>위험 정보:</strong> ${msdsInfo.hazardInfo}</p>
-                    <p><strong>응급조치:</strong> ${msdsInfo.firstAid}</p>
-                    <p><strong>취급 시 주의사항:</strong> ${msdsInfo.precaution}</p>
+                    <h3>${msdsInfo.chemNameKor || '정보 없음'}</h3>
+                    <p><strong>CAS 번호:</strong> ${msdsInfo.casNo || '정보 없음'}</p>
+                    <p><strong>위험 정보:</strong> ${msdsInfo.hazardInfo || '정보 없음'}</p>
+                    <p><strong>응급조치:</strong> ${msdsInfo.firstAid || '정보 없음'}</p>
+                    <p><strong>취급 시 주의사항:</strong> ${msdsInfo.precaution || '정보 없음'}</p>
                 `;
                 msdsResult.className = 'status success';
+
                 document.getElementById('speakBtn').disabled = false;
                 document.getElementById('stopSpeakBtn').disabled = true;
+
             } catch (error) {
                 msdsResult.textContent = '정보 검색 실패: ' + error.message;
                 msdsResult.className = 'status error';
@@ -389,23 +381,17 @@
             }
         }
 
-        // XML 요소 텍스트 가져오기
-        function getXmlElementText(parent, tagName) {
-            const element = parent.querySelector(tagName);
-            return element ? element.textContent : null;
-        }
-
         // TTS 음성 안내
         function speakMSDS() {
-            if (!msdsInfo.chemicalName) {
+            if (!msdsInfo.chemNameKor) {
                 alert('MSDS 정보가 없습니다.');
                 return;
             }
             const speechText = `
-                화학물질 ${msdsInfo.chemicalName}에 대한 안전 정보입니다.
-                위험 정보: ${msdsInfo.hazardInfo}
-                응급조치: ${msdsInfo.firstAid}
-                취급 시 주의사항: ${msdsInfo.precaution}
+                화학물질 ${msdsInfo.chemNameKor}에 대한 안전 정보입니다.
+                위험 정보: ${msdsInfo.hazardInfo || '정보 없음'}
+                응급조치: ${msdsInfo.firstAid || '정보 없음'}
+                취급 시 주의사항: ${msdsInfo.precaution || '정보 없음'}
             `;
             const synth = window.speechSynthesis;
             const utterance = new SpeechSynthesisUtterance(speechText);
