@@ -341,7 +341,7 @@
             try {
                 loader.classList.remove('hidden');
                 msdsResult.textContent = '정보를 검색 중입니다...';
-                const url = `https://msds.kosha.or.kr/openapi/service/msdschemv/?serviceKey=${encodeURIComponent(apiKey)}&searchWrd=${encodeURIComponent(keyword)}`;
+                const url = `http://localhost:3000/msds?keyword=${encodeURIComponent(keyword)}`;
                 const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`HTTP 오류: ${response.status}`);
